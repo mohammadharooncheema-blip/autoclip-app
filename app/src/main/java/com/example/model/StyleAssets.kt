@@ -15,7 +15,8 @@ data class StyleAssets(
     val bottomImagePath: String? = null,
     val mirrorTopImage: Boolean = true,
     val centerTagText: String = "BEST MOMENT",
-    val showCenterTag: Boolean = true,
+    // Center Tag Badge UI was removed: badge stays off, no toggle is shown.
+    val showCenterTag: Boolean = false,
     val framingMode: VideoFramingMode = VideoFramingMode.EXPANDED_4_3
 ) {
     val effectiveBottomPath: String?

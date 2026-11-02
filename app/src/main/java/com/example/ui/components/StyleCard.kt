@@ -3,6 +3,8 @@ package com.example.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +35,7 @@ import com.example.model.EditingStyle
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.EmeraldAccent
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun StyleSelectionSection(
     selectedStyles: Set<EditingStyle>,
@@ -45,7 +48,10 @@ fun StyleSelectionSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
                 Icon(
                     imageVector = Icons.Default.ViewCarousel,
                     contentDescription = null,
@@ -59,9 +65,12 @@ fun StyleSelectionSection(
                         fontWeight = FontWeight.Black,
                         letterSpacing = 1.sp
                     ),
-                    color = Color.White
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
+            Spacer(modifier = Modifier.width(8.dp))
             Surface(
                 color = EmeraldAccent.copy(alpha = 0.15f),
                 border = BorderStroke(1.dp, EmeraldAccent.copy(alpha = 0.4f)),
@@ -95,44 +104,43 @@ fun StyleSelectionSection(
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.Top
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                contentDescription = if (isSelected) "Active" else "Select",
-                                tint = if (isSelected) style.accentColor else Color.Gray,
-                                modifier = Modifier.size(20.dp)
+                        Icon(
+                            imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                            contentDescription = if (isSelected) "Active" else "Select",
+                            tint = if (isSelected) style.accentColor else Color.Gray,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = style.displayName,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                                color = Color.White,
+                                maxLines = 2
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = style.subtitle,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                color = style.accentColor.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
                                 Text(
-                                    text = style.displayName,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = style.subtitle,
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = style.badgeText,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = style.accentColor,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                    maxLines = 1
                                 )
                             }
-                        }
-                        Surface(
-                            color = style.accentColor.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                text = style.badgeText,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = style.accentColor,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                            )
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -142,9 +150,10 @@ fun StyleSelectionSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         FeaturePill(text = "9:16 Vertical", color = CyanPrimary)
                         FeaturePill(text = "Top + Bottom Images", color = style.accentColor)

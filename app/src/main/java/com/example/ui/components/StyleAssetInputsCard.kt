@@ -69,6 +69,7 @@ fun StyleAssetInputsCard(
     activeStyle: EditingStyle,
     styleAssets: StyleAssets,
     previewVideoFramePath: String? = null,
+    previewCompositePath: String? = null,
     onTopImageSelected: (Uri) -> Unit,
     onBottomImageSelected: (Uri) -> Unit,
     onMirrorToggled: (Boolean) -> Unit,
@@ -108,10 +109,12 @@ fun StyleAssetInputsCard(
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Icon(
                         imageVector = Icons.Default.AddPhotoAlternate,
                         contentDescription = null,
@@ -125,20 +128,24 @@ fun StyleAssetInputsCard(
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.sp
                         ),
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
+                Spacer(modifier = Modifier.width(8.dp))
                 Surface(
                     color = activeStyle.accentColor.copy(alpha = 0.18f),
                     border = BorderStroke(1.dp, activeStyle.accentColor.copy(alpha = 0.5f)),
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        text = "9:16 SPLIT",
+                        text = "9:16",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = activeStyle.accentColor,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        maxLines = 1
                     )
                 }
             }
@@ -159,6 +166,7 @@ fun StyleAssetInputsCard(
                 Live916PreviewCanvas(
                     styleAssets = styleAssets,
                     previewVideoFramePath = previewVideoFramePath,
+                    previewCompositePath = previewCompositePath,
                     activeStyle = activeStyle,
                     onPreviewPlaybackClicked = onPreviewPlaybackClicked,
                     modifier = Modifier.width(130.dp)
@@ -191,7 +199,7 @@ fun StyleAssetInputsCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (styleAssets.topImageUri != null) "Change Top Image" else "+ Pick Top Image",
+                            text = if (styleAssets.topImageUri != null) "Change Top" else "+ Pick Top",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -209,10 +217,12 @@ fun StyleAssetInputsCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Default.Sync,
                                     contentDescription = null,
@@ -220,17 +230,21 @@ fun StyleAssetInputsCard(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = "Mirror to Bottom",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = if (styleAssets.mirrorTopImage) "Same image on both" else "Different images",
+                                        text = if (styleAssets.mirrorTopImage) "Same image" else "Different images",
                                         fontSize = 8.sp,
-                                        color = Color.Gray
+                                        color = Color.Gray,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -269,7 +283,7 @@ fun StyleAssetInputsCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (styleAssets.bottomImageUri != null) "Change Bottom Image" else "+ Pick Bottom Image",
+                                text = if (styleAssets.bottomImageUri != null) "Change Bottom" else "+ Pick Bottom",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -370,14 +384,18 @@ fun StyleAssetInputsCard(
 private fun Live916PreviewCanvas(
     styleAssets: StyleAssets,
     previewVideoFramePath: String?,
+    previewCompositePath: String? = null,
     activeStyle: EditingStyle,
     onPreviewPlaybackClicked: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
-    val framing = styleAssets.framingMode
-    val topPath = styleAssets.topImagePath
-    val bottomPath = styleAssets.effectiveBottomPath
-
+    // SCROLL FIX: the old preview decoded 3 full images (top banner,
+    // video frame, bottom banner) with a weight-based layout every time
+    // this card scrolled back into view, which is what made scrolling
+    // stutter. Now it shows ONE small cached composite thumbnail
+    // (generated only when the assets actually change), at 360px.
+    // The full 9:16 player preview still opens on tap.
+    val composite = previewCompositePath?.takeIf { File(it).exists() }
     Box(
         modifier = modifier
             .aspectRatio(9f / 16f)
@@ -386,108 +404,53 @@ private fun Live916PreviewCanvas(
             .border(1.5.dp, activeStyle.accentColor, RoundedCornerShape(14.dp))
             .clickable(enabled = onPreviewPlaybackClicked != null) {
                 onPreviewPlaybackClicked?.invoke()
-            }
+            },
+        contentAlignment = Alignment.Center
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // 1. Top Image Banner
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clipToBounds()
-                    .background(Color(0xFF0F172A)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (topPath != null && File(topPath).exists()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(File(topPath))
-                            .size(Size(720, 720))
-                            .crossfade(false)
-                            .build(),
-                        contentDescription = "Top Banner",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Text("Top Image", fontSize = 10.sp, color = Color.Gray)
-                }
-            }
-
-            // 2. Center Video Box with proper aspect ratio
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(framing.aspectRatio)
-                    .clipToBounds()
-                    .background(Color(0xFF1E293B)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (previewVideoFramePath != null && File(previewVideoFramePath).exists()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(File(previewVideoFramePath))
-                            .size(Size(720, 720))
-                            .crossfade(false)
-                            .build(),
-                        contentDescription = "Center Video",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.PlayCircle,
-                        contentDescription = null,
-                        tint = CyanPrimary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                // Center Tag Badge Overlay
-                if (styleAssets.showCenterTag && styleAssets.centerTagText.isNotBlank()) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 4.dp),
-                        color = Color.Black.copy(alpha = 0.85f),
-                        border = BorderStroke(1.dp, EmeraldAccent),
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = styleAssets.centerTagText,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = EmeraldAccent,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
-
-            // 3. Bottom Image Banner
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clipToBounds()
-                    .background(Color(0xFF0F172A)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (bottomPath != null && File(bottomPath).exists()) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(File(bottomPath))
-                            .size(Size(720, 720))
-                            .crossfade(false)
-                            .build(),
-                        contentDescription = "Bottom Banner",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Text("Bottom Image", fontSize = 10.sp, color = Color.Gray)
-                }
-            }
+        if (composite != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(File(composite))
+                    .size(Size(360, 640))
+                    .crossfade(false)
+                    .memoryCacheKey(composite)
+                    .build(),
+                contentDescription = "9:16 Preview",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else if (previewVideoFramePath != null && File(previewVideoFramePath).exists()) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(File(previewVideoFramePath))
+                    .size(Size(360, 360))
+                    .crossfade(false)
+                    .build(),
+                contentDescription = "Center Video",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.PlayCircle,
+                contentDescription = null,
+                tint = CyanPrimary,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        // Play overlay, so it is obvious this opens the player.
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(Color.Black.copy(alpha = 0.45f), androidx.compose.foundation.shape.CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

@@ -1,0 +1,6 @@
+{
+  "name": "AutoClip",
+  "description": "Turn one video into multiple ready-to-use short clips with ready-made styles and auto-save to gallery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

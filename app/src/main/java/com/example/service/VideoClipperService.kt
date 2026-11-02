@@ -24,7 +24,10 @@ class VideoClipperService(private val context: Context) {
             val file = File(sourceUri.path!!)
             if (file.exists()) return@withContext file
         }
-        val cacheFile = File(context.cacheDir, "source_input_${System.currentTimeMillis()}.mp4")
+        // Reuse the cached copy for the same video instead of copying the
+        // whole file again on every preview/processing run.
+        val cacheFile = File(context.cacheDir, "source_input_${sourceUri.toString().hashCode()}.mp4")
+        if (cacheFile.exists() && cacheFile.length() > 0) return@withContext cacheFile
         context.contentResolver.openInputStream(sourceUri)?.use { input ->
             FileOutputStream(cacheFile).use { output ->
                 input.copyTo(output)

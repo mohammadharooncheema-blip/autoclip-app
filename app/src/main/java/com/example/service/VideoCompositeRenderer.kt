@@ -121,7 +121,9 @@ class VideoCompositeRenderer {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, bitRate)
                 setInteger(MediaFormat.KEY_FRAME_RATE, targetFps)
-                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                // 2s keyframe interval instead of every frame: much less encoder
+                // work and smaller files, same resolution/bitrate.
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
             }
             encoder = MediaCodec.createEncoderByType("video/avc").apply {
                 configure(encoderFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
@@ -531,6 +533,11 @@ class VideoCompositeRenderer {
 
         private val fullScreenBuf: FloatBuffer
         private val fullTexBuf: FloatBuffer
+        // Center geometry is fixed for one clip: cache its buffers instead of
+        // allocating a new direct ByteBuffer on every frame (30+/s).
+        private var cachedCenterPosBuf: FloatBuffer? = null
+        private var cachedCenterTexBuf: FloatBuffer? = null
+        private var cachedCenterKey: String? = null
 
         init {
             fullScreenBuf = createFloatBuffer(floatArrayOf(
@@ -596,46 +603,46 @@ class VideoCompositeRenderer {
 
             // Center Video positioning in NDC [-1, 1]
             val bottomY = centerY + centerH
-            val ndcLeft = -1.0f
-            val ndcRight = 1.0f
-            val ndcTop = 1.0f - 2.0f * (centerY.toFloat() / outH.toFloat())
-            val ndcBottom = 1.0f - 2.0f * (bottomY.toFloat() / outH.toFloat())
-
-            val centerPosBuf = createFloatBuffer(floatArrayOf(
-                ndcLeft,  ndcTop,
-                ndcLeft,  ndcBottom,
-                ndcRight, ndcTop,
-                ndcRight, ndcBottom
-            ))
-
-            // Aspect ratio preservation with center crop to center slot
-            val srcAspect = srcVideoW.toFloat() / srcVideoH.toFloat()
-            val targetAspect = outW.toFloat() / centerH.toFloat()
-            val cUMin: Float
-            val cUMax: Float
-            val cVMin: Float
-            val cVMax: Float
-
-            if (srcAspect > targetAspect) {
-                val scale = targetAspect / srcAspect
-                cUMin = (1.0f - scale) / 2.0f
-                cUMax = 1.0f - cUMin
-                cVMin = 0.0f
-                cVMax = 1.0f
-            } else {
-                val scale = srcAspect / targetAspect
-                cUMin = 0.0f
-                cUMax = 1.0f
-                cVMin = (1.0f - scale) / 2.0f
-                cVMax = 1.0f - cVMin
+            val geometryKey = "$srcVideoW-$srcVideoH-$outW-$outH-$centerY-$centerH"
+            if (cachedCenterKey != geometryKey) {
+                val ndcTop = 1.0f - 2.0f * (centerY.toFloat() / outH.toFloat())
+                val ndcBottom = 1.0f - 2.0f * (bottomY.toFloat() / outH.toFloat())
+                cachedCenterPosBuf = createFloatBuffer(floatArrayOf(
+                    -1.0f, ndcTop,
+                    -1.0f, ndcBottom,
+                    1.0f, ndcTop,
+                    1.0f, ndcBottom
+                ))
+                // Aspect ratio preservation with center crop to center slot
+                val srcAspect = srcVideoW.toFloat() / srcVideoH.toFloat()
+                val targetAspect = outW.toFloat() / centerH.toFloat()
+                val cUMin: Float
+                val cUMax: Float
+                val cVMin: Float
+                val cVMax: Float
+                if (srcAspect > targetAspect) {
+                    val scale = targetAspect / srcAspect
+                    cUMin = (1.0f - scale) / 2.0f
+                    cUMax = 1.0f - cUMin
+                    cVMin = 0.0f
+                    cVMax = 1.0f
+                } else {
+                    val scale = srcAspect / targetAspect
+                    cUMin = 0.0f
+                    cUMax = 1.0f
+                    cVMin = (1.0f - scale) / 2.0f
+                    cVMax = 1.0f - cVMin
+                }
+                cachedCenterTexBuf = createFloatBuffer(floatArrayOf(
+                    cUMin, cVMax,
+                    cUMin, cVMin,
+                    cUMax, cVMax,
+                    cUMax, cVMin
+                ))
+                cachedCenterKey = geometryKey
             }
-
-            val centerTexBuf = createFloatBuffer(floatArrayOf(
-                cUMin, cVMax,
-                cUMin, cVMin,
-                cUMax, cVMax,
-                cUMax, cVMin
-            ))
+            val centerPosBuf = cachedCenterPosBuf!!
+            val centerTexBuf = cachedCenterTexBuf!!
 
             // Draw center video frame
             GLES20.glUseProgram(programOES)

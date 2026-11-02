@@ -16,6 +16,7 @@ import com.example.model.VideoFramingMode
 import com.example.service.BannerAssetHelper
 import com.example.service.BatchManager
 import com.example.service.GalleryService
+import com.example.service.ProcessingEngine
 import com.example.service.SampleVideoGenerator
 import com.example.service.VideoAnalyzerService
 import com.example.service.VideoClipperService
@@ -73,7 +74,21 @@ class AutoClipViewModel(application: Application) : AndroidViewModel(application
     private val _previewVideoFramePath = MutableStateFlow<String?>(null)
     val previewVideoFramePath: StateFlow<String?> = _previewVideoFramePath.asStateFlow()
 
-    private var processingJob: Job? = null
+    // One small cached composite thumbnail for the live preview. The old
+    // preview decoded 3 full images on every scroll entry, which is what
+    // made scrolling stutter; this single image is generated only when
+    // the top/bottom image, framing, or video frame actually changes.
+    private val _previewCompositePath = MutableStateFlow<String?>(null)
+    val previewCompositePath: StateFlow<String?> = _previewCompositePath.asStateFlow()
+    private var previewCompositeKey: String? = null
+
+    init {
+        viewModelScope.launch {
+            ProcessingEngine.state.collect { state ->
+                _processingState.value = state
+            }
+        }
+    }
 
     init {
         val outputDir = File(context.filesDir, "clips")
@@ -143,6 +158,7 @@ class AutoClipViewModel(application: Application) : AndroidViewModel(application
                 if (scaled !== bitmap) scaled.recycle()
                 bitmap.recycle()
                 _previewVideoFramePath.value = frameFile.absolutePath
+                refreshPreviewComposite()
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -210,6 +226,7 @@ class AutoClipViewModel(application: Application) : AndroidViewModel(application
                     topImageUri = uri,
                     topImagePath = localPath
                 )
+                refreshPreviewComposite()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -225,6 +242,7 @@ class AutoClipViewModel(application: Application) : AndroidViewModel(application
                     bottomImagePath = localPath,
                     mirrorTopImage = false
                 )
+                refreshPreviewComposite()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -233,6 +251,32 @@ class AutoClipViewModel(application: Application) : AndroidViewModel(application
 
     fun setMirrorTopImage(mirror: Boolean) {
         _styleAssets.value = _styleAssets.value.copy(mirrorTopImage = mirror)
+        refreshPreviewComposite()
+    }
+
+    fun refreshPreviewComposite() {
+        val framePath = _previewVideoFramePath.value ?: return
+        val assets = _styleAssets.value
+        val key = listOf(framePath, assets.topImagePath, assets.effectiveBottomPath, assets.framingMode.name).joinToString("|")
+        if (key == previewCompositeKey) return
+        previewCompositeKey = key
+        viewModelScope.launch {
+            try {
+                val frameBitmap = android.graphics.BitmapFactory.decodeFile(framePath)
+                val outFile = File(context.cacheDir, "preview_composite.jpg")
+                bannerHelper.createComposite916Thumbnail(
+                    videoFrameBitmap = frameBitmap,
+                    topImagePath = assets.topImagePath,
+                    bottomImagePath = assets.effectiveBottomPath,
+                    centerTagText = null,
+                    outputFile = outFile,
+                    framingMode = assets.framingMode
+                )
+                frameBitmap?.recycle()
+                _previewCompositePath.value = outFile.absolutePath
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun setCenterTagText(tag: String) {
@@ -249,6 +293,7 @@ class AutoClipViewModel(application: Application) : AndroidViewModel(application
 
     fun setFramingMode(mode: VideoFramingMode) {
         _styleAssets.value = _styleAssets.value.copy(framingMode = mode)
+        refreshPreviewComposite()
     }
 
     fun calculatePlannedClipCount(): Int {
@@ -268,142 +313,27 @@ class AutoClipViewModel(application: Application) : AndroidViewModel(application
         val meta = _videoMetadata.value ?: return
         val styles = _selectedStyles.value.toList()
         if (styles.isEmpty()) return
-
-        processingJob?.cancel()
-        processingJob = viewModelScope.launch {
-            try {
-                val batchName = batchManager.createNextBatch(_appSettings.value.albumName)
-                val batchDir = File(File(context.filesDir, "clips"), batchName)
-                if (!batchDir.exists()) batchDir.mkdirs()
-
-                if (_styleAssets.value.topImagePath == null) {
-                    val defaultBanner = bannerHelper.getOrCreateDefaultBanner()
-                    _styleAssets.value = _styleAssets.value.copy(
-                        topImagePath = defaultBanner.absolutePath,
-                        bottomImagePath = defaultBanner.absolutePath
-                    )
-                }
-                val currentAssets = _styleAssets.value
-
-                _processingState.value = ProcessingUiState.InProgress(
-                    phase = ProcessingPhase.ANALYZING,
-                    progress = 0.08f,
-                    statusMessage = "Analyzing ${meta.title} (${meta.resolutionFormatted}, ${meta.durationFormatted})",
-                    batchName = batchName
-                )
-                delay(600)
-
-                val localSource = clipperService.prepareLocalSourceFile(uri)
-
-                val cuts = analyzerService.planCuts(meta.durationMs, _selectedDuration.value)
-                val totalClips = cuts.size * styles.size
-                _processingState.value = ProcessingUiState.InProgress(
-                    phase = ProcessingPhase.FINDING_CLIPS,
-                    progress = 0.22f,
-                    totalClips = totalClips,
-                    statusMessage = "Found ${cuts.size} natural segments for $batchName (Clip_001 to Clip_%03d)".format(cuts.size),
-                    batchName = batchName
-                )
-                delay(700)
-
-                _processingState.value = ProcessingUiState.InProgress(
-                    phase = ProcessingPhase.APPLYING_STYLES,
-                    progress = 0.35f,
-                    totalClips = totalClips,
-                    statusMessage = "Applying 9:16 Top & Bottom Image template to $batchName",
-                    batchName = batchName
-                )
-                delay(600)
-
-                val generatedClips = mutableListOf<ClipSegment>()
-                var clipCounter = 0
-                for (cut in cuts) {
-                    for (style in styles) {
-                        clipCounter++
-                        val baseProg = 0.35f + 0.45f * (clipCounter.toFloat() / totalClips)
-                        _processingState.value = ProcessingUiState.InProgress(
-                            phase = ProcessingPhase.RENDERING,
-                            progress = baseProg,
-                            currentClipIndex = clipCounter,
-                            totalClips = totalClips,
-                            currentStyleName = style.displayName,
-                            statusMessage = "Rendering $batchName / Clip_%03d.mp4 ($clipCounter of $totalClips)".format(cut.index),
-                            batchName = batchName
-                        )
-                        val segment = clipperService.clipSegment(
-                            sourceFile = localSource,
-                            segmentIndex = cut.index,
-                            startMs = cut.startMs,
-                            endMs = cut.endMs,
-                            style = style,
-                            outputDir = batchDir,
-                            styleAssets = currentAssets,
-                            quality = _appSettings.value.quality,
-                            batchName = batchName
-                        )
-                        generatedClips.add(segment)
-                    }
-                }
-
-                var savedCount = 0
-                val finalClips = mutableListOf<ClipSegment>()
-                val autoSave = _appSettings.value.autoSaveGallery
-                _processingState.value = ProcessingUiState.InProgress(
-                    phase = ProcessingPhase.SAVING_GALLERY,
-                    progress = 0.90f,
-                    totalClips = totalClips,
-                    statusMessage = if (autoSave) "Saving clips into Movies/${_appSettings.value.albumName}/$batchName/..." else "Finalizing clips...",
-                    batchName = batchName
-                )
-                for ((idx, clip) in generatedClips.withIndex()) {
-                    if (autoSave) {
-                        val file = File(clip.filePath)
-                        val galleryUri = galleryService.saveVideoToGallery(
-                            sourceFile = file,
-                            displayName = clip.clipFileName.ifEmpty { file.name },
-                            albumName = _appSettings.value.albumName,
-                            subfolder = batchName
-                        )
-                        val updated = clip.copy(
-                            galleryUriString = galleryUri?.toString(),
-                            isSavedToGallery = galleryUri != null
-                        )
-                        if (galleryUri != null) savedCount++
-                        finalClips.add(updated)
-                    } else {
-                        finalClips.add(clip)
-                    }
-                    val saveProg = 0.90f + 0.10f * ((idx + 1).toFloat() / generatedClips.size)
-                    _processingState.value = ProcessingUiState.InProgress(
-                        phase = ProcessingPhase.SAVING_GALLERY,
-                        progress = saveProg,
-                        totalClips = totalClips,
-                        statusMessage = "Saved ${idx + 1} of ${generatedClips.size} clips to Gallery ($batchName)",
-                        batchName = batchName
-                    )
-                }
-                delay(300)
-                _processingState.value = ProcessingUiState.Completed(
-                    clips = finalClips,
-                    savedCount = if (autoSave) savedCount else finalClips.size,
-                    durationSeconds = meta.durationMs / 1000,
-                    batchName = batchName
-                )
-            } catch (e: Exception) {
-                e.printStackTrace()
-                _processingState.value = ProcessingUiState.Error("Processing failed: ${e.localizedMessage ?: "Unknown error"}")
-            }
-        }
+        ProcessingEngine.start(
+            appContext = context,
+            sourceUri = uri,
+            meta = meta,
+            duration = _selectedDuration.value,
+            styles = styles,
+            assets = _styleAssets.value,
+            settings = _appSettings.value
+        )
     }
 
     fun cancelProcessing() {
-        processingJob?.cancel()
-        _processingState.value = ProcessingUiState.Idle
+        ProcessingEngine.cancel()
     }
 
     fun resetToMainScreen() {
-        processingJob?.cancel()
-        _processingState.value = ProcessingUiState.Idle
+        // Do not cancel a running background batch just because the user
+        // left the results screen; only reset if nothing is running.
+        // This goes through the engine, otherwise the engine collector
+        // would immediately overwrite a local Idle with the old Completed.
+        ProcessingEngine.resetToIdle()
     }
 
     fun openPlayerModal(clip: ClipSegment) {

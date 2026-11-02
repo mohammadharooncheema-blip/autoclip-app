@@ -16,6 +16,19 @@ import com.example.viewmodel.AutoClipViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Notification permission for the background clipping notification.
+        // The foreground service still runs without it, but the progress
+        // notification is only visible with this permission on Android 13+.
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(
+                    this, android.Manifest.permission.POST_NOTIFICATIONS
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                androidx.core.app.ActivityCompat.requestPermissions(
+                    this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001
+                )
+            }
+        }
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {

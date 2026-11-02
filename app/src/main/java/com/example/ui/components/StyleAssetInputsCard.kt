@@ -54,6 +54,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Size
+import androidx.compose.ui.platform.LocalContext
 import com.example.model.EditingStyle
 import com.example.model.StyleAssets
 import com.example.model.VideoFramingMode
@@ -397,7 +400,11 @@ private fun Live916PreviewCanvas(
             ) {
                 if (topPath != null && File(topPath).exists()) {
                     AsyncImage(
-                        model = File(topPath),
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(File(topPath))
+                            .size(Size(720, 720))
+                            .crossfade(false)
+                            .build(),
                         contentDescription = "Top Banner",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -418,7 +425,11 @@ private fun Live916PreviewCanvas(
             ) {
                 if (previewVideoFramePath != null && File(previewVideoFramePath).exists()) {
                     AsyncImage(
-                        model = File(previewVideoFramePath),
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(File(previewVideoFramePath))
+                            .size(Size(720, 720))
+                            .crossfade(false)
+                            .build(),
                         contentDescription = "Center Video",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -464,7 +475,11 @@ private fun Live916PreviewCanvas(
             ) {
                 if (bottomPath != null && File(bottomPath).exists()) {
                     AsyncImage(
-                        model = File(bottomPath),
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(File(bottomPath))
+                            .size(Size(720, 720))
+                            .crossfade(false)
+                            .build(),
                         contentDescription = "Bottom Banner",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop

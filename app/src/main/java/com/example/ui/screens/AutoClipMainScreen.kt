@@ -80,6 +80,7 @@ fun AutoClipMainScreen(
     val showSettingsDialog by viewModel.showSettingsDialog.collectAsState()
     val isLoadingSample by viewModel.isLoadingSample.collectAsState()
     val previewVideoFramePath by viewModel.previewVideoFramePath.collectAsState()
+    val previewCompositePath by viewModel.previewCompositePath.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -206,11 +207,11 @@ fun AutoClipMainScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
-                            contentPadding = PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(18.dp)
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             // Section 1: Video Input
-                            item {
+                            item(key = "video_input") {
                                 VideoInputCard(
                                     videoUri = selectedVideoUri,
                                     metadata = videoMetadata,
@@ -220,26 +221,27 @@ fun AutoClipMainScreen(
                                 )
                             }
                             // Section 2: Clip Length Selector
-                            item {
+                            item(key = "clip_length") {
                                 ClipLengthSelector(
                                     selectedDuration = selectedDuration,
                                     onDurationSelected = { dur -> viewModel.selectDuration(dur) }
                                 )
                             }
                             // Section 3: Editing Styles
-                            item {
+                            item(key = "style_selection") {
                                 StyleSelectionSection(
                                     selectedStyles = selectedStyles,
                                     onToggleStyle = { style -> viewModel.toggleStyle(style) }
                                 )
                             }
                             // Section 4: Style Assets & Framing Customizer
-                            item {
+                            item(key = "style_assets") {
                                 val activeStyle = selectedStyles.firstOrNull() ?: EditingStyle.DUAL_BANNER
                                 StyleAssetInputsCard(
                                     activeStyle = activeStyle,
                                     styleAssets = styleAssets,
                                     previewVideoFramePath = previewVideoFramePath,
+                                    previewCompositePath = previewCompositePath,
                                     onTopImageSelected = { uri -> viewModel.setTopImageUri(uri) },
                                     onBottomImageSelected = { uri -> viewModel.setBottomImageUri(uri) },
                                     onMirrorToggled = { mirror -> viewModel.setMirrorTopImage(mirror) },
@@ -262,7 +264,8 @@ fun AutoClipMainScreen(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.surfaceVariant,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                            tonalElevation = 4.dp
                         ) {
                             Column(
                                 modifier = Modifier

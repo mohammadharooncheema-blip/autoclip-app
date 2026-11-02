@@ -125,10 +125,22 @@ class AutoClipViewModel(application: Application) : AndroidViewModel(application
             val bitmap = retriever.getFrameAtTime(1_500_000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                 ?: retriever.getFrameAtTime(0L)
             if (bitmap != null) {
+                // Downscale the preview frame: the on-screen preview is small,
+                // a full-resolution frame only makes scrolling/recomposition lag.
+                val scaled = if (bitmap.width > 720) {
+                    val ratio = 720f / bitmap.width.toFloat()
+                    android.graphics.Bitmap.createScaledBitmap(
+                        bitmap,
+                        720,
+                        (bitmap.height * ratio).toInt().coerceAtLeast(1),
+                        true
+                    )
+                } else bitmap
                 val frameFile = File(context.cacheDir, "preview_source_frame.jpg")
                 FileOutputStream(frameFile).use { out ->
-                    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+                    scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
                 }
+                if (scaled !== bitmap) scaled.recycle()
                 bitmap.recycle()
                 _previewVideoFramePath.value = frameFile.absolutePath
             }
